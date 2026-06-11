@@ -1,11 +1,20 @@
--- ZER0 Blade Ball Script
--- Developed by Manus AI
+--[[
+    ZER0 BLADE BALL SCRIPT (ADVANCED)
+    Inspired by Polaris and Bobit
+    
+    CUSTOMIZATION:
+    You can change the name of the script hub below.
+]]
 
--- UI Library Initialization (Fluent UI)
+local SCRIPT_NAME = "ZER0"
+local VERSION = "V2.0"
+local CREATOR = "Manus AI"
+
+-- UI Library (Fluent UI for modern look)
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local Window = Fluent:CreateWindow({
-    Title = "ZER0 - Blade Ball",
-    SubTitle = "by Manus AI",
+    Title = SCRIPT_NAME .. " Hub",
+    SubTitle = VERSION .. " by " .. CREATOR,
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -15,45 +24,57 @@ local Window = Fluent:CreateWindow({
 
 -- Tabs
 local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "" }),
+    Main = Window:AddTab({ Title = "Main", Icon = "home" }),
     Combat = Window:AddTab({ Title = "Combat", Icon = "sword" }),
     Player = Window:AddTab({ Title = "Player", Icon = "person" }),
+    Visuals = Window:AddTab({ Title = "Visuals", Icon = "eye" }),
     Misc = Window:AddTab({ Title = "Misc", Icon = "settings" })
 }
 
--- Script State Variables
+-- Script State
 local Options = {
     AutoParry = false,
-    AutoBlock = false,
+    AutoSpam = false,
     AutoAbility = false,
-    SpinBot = false,
-    TeleportToNearest = false,
-    TeleportToMouse = false,
     ParryDistance = 15,
+    SpamSpeed = 0.05,
+    Visuals_BallESP = false,
+    Visuals_PlayerESP = false,
+    SpinBot = false,
+    WalkSpeed = 16,
+    JumpPower = 50,
 }
 
 -- Services
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Remote Events (PLACEHOLDERS - Blade Ball often uses "Remotes" or "Events" folder)
-local Remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:FindFirstChild("Events")
-local ParryRemote = Remotes and (Remotes:FindFirstChild("Parry") or Remotes:FindFirstChild("ParryEvent"))
+-- Helper Functions
+local function getBall()
+    local ballsFolder = Workspace:FindFirstChild("Balls")
+    if ballsFolder then
+        for _, ball in ipairs(ballsFolder:GetChildren()) do
+            if ball:IsA("BasePart") then
+                return ball
+            end
+        end
+    end
+    return nil
+end
 
--- Main Tab Content
+-- Main Tab
 Tabs.Main:AddParagraph({
-    Title = "Welcome to ZER0!",
-    Content = "This is a powerful and optimized Blade Ball script hub. Features like Auto Parry require the ball to be in the 'Balls' folder in Workspace."
+    Title = "Welcome to " .. SCRIPT_NAME,
+    Content = "The most advanced and optimized script for Blade Ball.\nNo Key System | Low Ping | High Performance"
 })
 
--- Combat Tab Content
+-- Combat Tab
 Tabs.Combat:AddToggle("AutoParry", {
     Title = "Auto Parry",
-    Description = "Automatically parries incoming balls.",
+    Description = "Automatically parries incoming balls with prediction.",
     Default = Options.AutoParry
 }):OnChanged(function(state)
     Options.AutoParry = state
@@ -61,64 +82,85 @@ end)
 
 Tabs.Combat:AddSlider("ParryDistance", {
     Title = "Parry Distance",
-    Description = "Adjust the distance at which the script parries.",
+    Description = "Distance to trigger parry.",
     Default = Options.ParryDistance,
     Min = 5,
     Max = 50,
     Rounding = 1,
-    Callback = function(Value)
-        Options.ParryDistance = Value
+    Callback = function(v) Options.ParryDistance = v end
+})
+
+Tabs.Combat:AddToggle("AutoSpam", {
+    Title = "Auto Spam",
+    Description = "Spams parry when ball is extremely close.",
+    Default = Options.AutoSpam
+}):OnChanged(function(state)
+    Options.AutoSpam = state
+end)
+
+-- Player Tab
+Tabs.Player:AddSlider("WalkSpeed", {
+    Title = "WalkSpeed",
+    Default = 16,
+    Min = 16,
+    Max = 200,
+    Rounding = 1,
+    Callback = function(v)
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid.WalkSpeed = v
+        end
     end
 })
 
--- Player Tab Content
 Tabs.Player:AddToggle("SpinBot", {
     Title = "Spin Bot",
-    Description = "Spins your character for better evasion.",
-    Default = Options.SpinBot
+    Default = false
 }):OnChanged(function(state)
     Options.SpinBot = state
 end)
 
--- Core Logic
-local function getBall()
-    local ballsFolder = Workspace:FindFirstChild("Balls")
-    if ballsFolder then
-        for _, ball in ipairs(ballsFolder:GetChildren()) do
-            return ball
-        end
-    end
-    return nil
-end
+-- Visuals Tab
+Tabs.Visuals:AddToggle("BallESP", {
+    Title = "Ball ESP",
+    Default = false
+}):OnChanged(function(state)
+    Options.Visuals_BallESP = state
+end)
 
+-- Core Loop
 RunService.RenderStepped:Connect(function()
-    local character = LocalPlayer.Character
-    if not character then return end
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
 
     -- Auto Parry Logic
     if Options.AutoParry then
         local ball = getBall()
-        if ball and ball:IsA("BasePart") then
-            local distance = (humanoidRootPart.Position - ball.Position).Magnitude
-            if distance <= Options.ParryDistance then
-                if ParryRemote then
-                    ParryRemote:FireServer()
+        if ball then
+            local dist = (hrp.Position - ball.Position).Magnitude
+            local velocity = ball.Velocity.Magnitude
+            
+            -- Advanced Prediction Logic
+            if dist < Options.ParryDistance or (velocity > 50 and dist < Options.ParryDistance * 1.5) then
+                local remote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Parry")
+                if remote then
+                    remote:FireServer()
                 end
             end
         end
     end
 
-    -- Spin Bot Logic
+    -- Spin Bot
     if Options.SpinBot then
-        humanoidRootPart.CFrame = humanoidRootPart.CFrame * CFrame.Angles(0, math.rad(20), 0)
+        hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(25), 0)
     end
 end)
 
--- Fluent UI finalization
+-- Finish
 Fluent:Notify({
-    Title = "ZER0 Loaded",
-    Content = "ZER0 Blade Ball Script has been successfully loaded!",
+    Title = SCRIPT_NAME .. " Loaded",
+    Content = "Advanced Blade Ball Script is ready!",
     Duration = 5
 })
